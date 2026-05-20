@@ -128,10 +128,12 @@ const DEFAULT_CONFIG = {
 const State = {
   vista_actual: 'agenda',
   filtro_sede: 'todas',
+  filtro_rango: 'hoy',     // para vista generar: hoy | 7 | 30 | todo
   config: { ...DEFAULT_CONFIG },
   evaluaciones: [],        // historial completo
-  ronda: null,             // { fecha_inicio, hab_ids, idx, evaluaciones_temp: [{}] }
+  ronda: null,             // (renombrado conceptualmente a 'evaluación en curso', single-room)
   ronda_eval_actual: null, // referencia al objeto evaluación en curso
+  generar_seleccion: new Set(), // ids de evaluaciones seleccionadas en vista generar
 };
 
 // ============================================================
@@ -296,9 +298,8 @@ function showView(name) {
 
   const titles = {
     agenda:    'Evaluación Habitaciones',
-    seleccion: 'Seleccionar habitaciones',
     checklist: 'Evaluación en curso',
-    resumen:   'Resumen de ronda',
+    generar:   'Generar reporte',
     reportes:  'Reportes abiertos',
     historial: 'Historial',
     config:    'Configuración',
@@ -306,15 +307,14 @@ function showView(name) {
   $('#topbar-title').textContent = titles[name] || 'Evaluación';
 
   const back = $('#btn-back');
-  const showBack = ['seleccion', 'checklist', 'resumen', 'reportes', 'historial', 'config'].includes(name);
+  const showBack = ['checklist', 'generar', 'reportes', 'historial', 'config'].includes(name);
   back.classList.toggle('hidden', !showBack);
 
   $('#side-menu').classList.add('hidden');
 
   if (name === 'agenda')    renderAgenda();
-  if (name === 'seleccion') renderSeleccion();
   if (name === 'checklist') renderChecklist();
-  if (name === 'resumen')   renderResumen();
+  if (name === 'generar')   renderGenerar();
   if (name === 'reportes')  renderReportes();
   if (name === 'historial') renderHistorial();
   if (name === 'config')    renderConfig();
@@ -358,7 +358,7 @@ function renderAgenda() {
   $$('#agenda-lista .hab-card').forEach(card => {
     card.addEventListener('click', () => {
       const id = card.dataset.habId;
-      verHistorialDeHabitacion(id);
+      iniciarEvaluacion(id);
     });
   });
 }
@@ -382,57 +382,51 @@ function habCardHTML(hab, conCheckbox) {
 }
 
 // ============================================================
-// VISTA: SELECCIÓN DE RONDA
+// INICIAR EVALUACIÓN (single-room)
 // ============================================================
-function renderSeleccion() {
-  const habs = habitacionesFiltradas();
-  const grupos = habitacionesAgrupadas(habs);
-  const html = grupos.map(g => {
-    const titulo = SEDE_LABEL[g.sede] + (g.piso ? ' - ' + g.piso : '');
-    const items = g.items.map(h => habCardHTML(h, true)).join('');
-    return `<div class="grupo-sede">${titulo}</div>${items}`;
-  }).join('');
-  $('#seleccion-lista').innerHTML = html;
-  actualizarContadorSeleccion();
-
-  $$('#seleccion-lista .hab-check').forEach(cb => {
-    cb.addEventListener('change', actualizarContadorSeleccion);
-    cb.addEventListener('click', e => e.stopPropagation());
-  });
-  $$('#seleccion-lista .hab-card').forEach(card => {
-    card.addEventListener('click', e => {
-      if (e.target.tagName === 'INPUT') return;
-      const cb = card.querySelector('input.hab-check');
-      if (cb) { cb.checked = !cb.checked; actualizarContadorSeleccion(); }
-    });
-  });
+function iniciarEvaluacion(hab_id) {
+  // Si ya hay una eval en curso, ofrecer continuarla o descartar
+  if (State.ronda && State.ronda.evaluaciones_temp && State.ronda.evaluaciones_temp.length) {
+    const enCurso = State.ronda.evaluaciones_temp[0];
+    if (enCurso && !enCurso.fecha_guardado) {
+      // Hay una evaluación a medias. Si es la MISMA habitación, retomar.
+      if (enCurso.hab_id === hab_id) {
+        showView('checklist');
+        return;
+      }
+      // Si es OTRA habitación, preguntar
+      const habEnCurso = HABITACIONES.find(h => h.id === enCurso.hab_id);
+      showModalConfirm({
+        title: 'Hay una evaluación a medias',
+        body: 'Tienes la evaluación de ' + (habEnCurso ? habEnCurso.nombre : '???') + ' sin guardar. Si comienzas otra, esa se descarta.',
+        confirmLabel: 'Descartar y empezar otra',
+        onConfirm: () => {
+          State.ronda = null;
+          saveRonda();
+          _crearEvaluacionNueva(hab_id);
+        },
+      });
+      return;
+    }
+  }
+  _crearEvaluacionNueva(hab_id);
 }
 
-function actualizarContadorSeleccion() {
-  const n = $$('#seleccion-lista .hab-check:checked').length;
-  $('#cnt-seleccionadas').textContent = n;
-  $('#btn-comenzar').disabled = n === 0;
-}
-
-function comenzarRonda() {
-  const ids = $$('#seleccion-lista .hab-check:checked').map(c => c.dataset.habId);
-  if (!ids.length) { toast('Selecciona al menos una habitación', 'danger'); return; }
-
+function _crearEvaluacionNueva(hab_id) {
   State.ronda = {
     fecha_inicio: nowISO(),
-    hab_ids: ids,
+    hab_ids: [hab_id],
     idx: 0,
-    evaluaciones_temp: ids.map(id => ({
+    evaluaciones_temp: [{
       id: uid(),
-      hab_id: id,
+      hab_id: hab_id,
       fecha: nowISO(),
       evaluador: State.config.evaluador || 'Sin nombre',
       puntos: {},
       prioridad: null,
       obs_generales: '',
       estado: 'abierto',
-      saltada: false,
-    })),
+    }],
   };
   saveRonda();
   showView('checklist');
@@ -445,15 +439,12 @@ function renderChecklist() {
   if (!State.ronda || !State.ronda.evaluaciones_temp.length) {
     showView('agenda'); return;
   }
-  const idx = State.ronda.idx;
-  const total = State.ronda.evaluaciones_temp.length;
-  const evalActual = State.ronda.evaluaciones_temp[idx];
+  const evalActual = State.ronda.evaluaciones_temp[0];
   State.ronda_eval_actual = evalActual;
   const hab = HABITACIONES.find(h => h.id === evalActual.hab_id);
 
   $('#check-hab-nombre').textContent = hab.nombre;
   $('#check-hab-meta').textContent = SEDE_LABEL[hab.sede] + (hab.piso ? ' - ' + hab.piso : '');
-  $('#check-progreso').textContent = (idx + 1) + ' de ' + total;
 
   const html = PUNTOS_CHECK.map(p => {
     const data = evalActual.puntos[p.id] || { estado: ESTADO_PUNTO.PENDIENTE, comentario: '', fotos: [] };
@@ -577,7 +568,7 @@ function renderFotoPreview(div, fotos) {
   if (cnt) cnt.textContent = '(' + arr.length + '/' + MAX_FOTOS_POR_PUNTO + ')';
 }
 
-function guardarYSiguiente() {
+function guardarEvaluacion() {
   if (!State.ronda_eval_actual) return;
 
   const obs = $('#check-obs-generales').value.trim();
@@ -585,80 +576,132 @@ function guardarYSiguiente() {
 
   const hayProblemas = tieneProblemas(State.ronda_eval_actual);
   if (hayProblemas && !State.ronda_eval_actual.prioridad) {
-    toast('Asigna una prioridad al reporte', 'danger');
+    toast('Asigna una prioridad antes de guardar', 'danger');
     return;
   }
 
-  // Validar que tenga al menos un punto marcado para no guardar vacíos
   const algunMarcado = Object.values(State.ronda_eval_actual.puntos)
     .some(p => p.estado === ESTADO_PUNTO.OK || p.estado === ESTADO_PUNTO.REPORTAR);
   if (!algunMarcado) {
-    toast('Marca al menos un punto antes de continuar', 'danger');
+    toast('Marca al menos un punto antes de guardar', 'danger');
     return;
   }
 
   State.ronda_eval_actual.fecha = nowISO();
+  State.ronda_eval_actual.fecha_guardado = nowISO();
   State.ronda_eval_actual.estado = hayProblemas ? 'abierto' : 'cerrado';
 
-  saveRonda();
-  avanzarRonda();
-}
-
-function saltarHabitacion() {
-  if (!State.ronda_eval_actual) return;
-  State.ronda_eval_actual.saltada = true;
-  avanzarRonda();
-}
-
-function avanzarRonda() {
-  State.ronda.idx++;
-  if (State.ronda.idx >= State.ronda.evaluaciones_temp.length) {
-    finalizarChecklist();
-  } else {
-    saveRonda();
-    renderChecklist();
-  }
-}
-
-function finalizarChecklist() {
-  // Mover evaluaciones válidas al historial
-  const nuevas = State.ronda.evaluaciones_temp.filter(e => !e.saltada);
-  State.evaluaciones.push(...nuevas);
+  // Empujar al historial PERMANENTE
+  State.evaluaciones.push(State.ronda_eval_actual);
   saveEvaluaciones();
-  // Conservamos la ronda hasta que el usuario salga del resumen, para mostrarla
-  showView('resumen');
+
+  // Limpiar evaluación en curso
+  const hab = HABITACIONES.find(h => h.id === State.ronda_eval_actual.hab_id);
+  State.ronda = null;
+  State.ronda_eval_actual = null;
+  saveRonda();
+
+  toast('Evaluación de ' + (hab ? hab.nombre : '???') + ' guardada', 'success');
+  showView('agenda');
+}
+
+function cancelarEvaluacion() {
+  showModalConfirm({
+    title: 'Cancelar evaluación',
+    body: 'Se perderán los cambios sin guardar de esta habitación. ¿Continuar?',
+    confirmLabel: 'Sí, cancelar',
+    onConfirm: () => {
+      State.ronda = null;
+      State.ronda_eval_actual = null;
+      saveRonda();
+      showView('agenda');
+    },
+  });
 }
 
 // ============================================================
-// VISTA: RESUMEN
+// VISTA: GENERAR REPORTE CONSOLIDADO
 // ============================================================
-function renderResumen() {
-  const ronda = State.ronda;
-  if (!ronda) { showView('agenda'); return; }
+function evaluacionesEnRango(rango) {
+  let limite = null;
+  if (rango === 'hoy') { limite = new Date(); limite.setHours(0, 0, 0, 0); }
+  else if (rango === '7')   { limite = new Date(); limite.setDate(limite.getDate() - 7); }
+  else if (rango === '30')  { limite = new Date(); limite.setDate(limite.getDate() - 30); }
 
-  const evals = ronda.evaluaciones_temp.filter(e => !e.saltada);
-  const conProblemas = evals.filter(tieneProblemas);
-  const sinProblemas = evals.filter(e => !tieneProblemas(e));
+  const evals = [...State.evaluaciones].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  if (!limite) return evals;
+  return evals.filter(e => new Date(e.fecha) >= limite);
+}
 
-  $('#resumen-fecha').textContent = fechaHoraLegible(ronda.fecha_inicio);
-  $('#resumen-stats').innerHTML = `${evals.length} habitaciones evaluadas - <span style="color:#ffd2d4">${conProblemas.length} con reporte</span>`;
+function renderGenerar() {
+  // marcar chip activo
+  $$('#view-generar .chip').forEach(c => c.classList.toggle('active', c.dataset.rango === State.filtro_rango));
 
-  let html = '';
-  if (conProblemas.length) {
-    html += `<div class="grupo-sede">Habitaciones con reporte</div>`;
-    html += conProblemas.map(e => reporteCardHTML(e, false)).join('');
+  const evals = evaluacionesEnRango(State.filtro_rango);
+
+  // Por defecto: todas seleccionadas si no hay selección previa o si el rango cambió
+  if (!State.generar_seleccion || !State.generar_seleccion.size) {
+    State.generar_seleccion = new Set(evals.map(e => e.id));
+  } else {
+    // Limpiar selecciones que ya no estén en el rango filtrado
+    const ids = new Set(evals.map(e => e.id));
+    State.generar_seleccion = new Set([...State.generar_seleccion].filter(id => ids.has(id)));
   }
-  if (sinProblemas.length) {
-    html += `<div class="grupo-sede">Sin observaciones</div>`;
-    html += sinProblemas.map(e => {
-      const hab = HABITACIONES.find(h => h.id === e.hab_id);
-      return `<div class="reporte-card ok">
-        <div class="rep-titulo">${hab.nombre} <span style="color:#1e8c4d">✓</span></div>
-        <div class="rep-meta">${SEDE_LABEL[hab.sede]}${hab.piso ? ' - ' + hab.piso : ''}</div>
+
+  const conProblemas = evals.filter(tieneProblemas).length;
+
+  $('#generar-stats').innerHTML = `
+    <div><div class="stat-num">${evals.length}</div><div class="stat-lbl">Evaluadas</div></div>
+    <div><div class="stat-num danger">${conProblemas}</div><div class="stat-lbl">Con reporte</div></div>
+    <div><div class="stat-num success">${evals.length - conProblemas}</div><div class="stat-lbl">Sin obs.</div></div>
+    <div><div class="stat-num">${State.generar_seleccion.size}</div><div class="stat-lbl">Seleccionadas</div></div>
+  `;
+
+  if (!evals.length) {
+    $('#generar-lista').innerHTML = '<p class="hint">Sin evaluaciones en este rango. Cambia el filtro o evalúa habitaciones desde la Agenda.</p>';
+    actualizarContadorGenerar();
+    return;
+  }
+
+  $('#generar-lista').innerHTML = evals.map(e => {
+    const hab = HABITACIONES.find(h => h.id === e.hab_id);
+    const probs = tieneProblemas(e);
+    const checked = State.generar_seleccion.has(e.id) ? 'checked' : '';
+    const prio = e.prioridad ? ` · ${PRIO_LABEL[e.prioridad]}` : '';
+    return `
+      <div class="eval-card ${probs ? 'con-problemas' : 'sin-problemas'}" data-eval-id="${e.id}">
+        <input type="checkbox" class="eval-check" ${checked}>
+        <div class="eval-body">
+          <div class="eval-titulo">${hab ? hab.nombre : '???'} ${probs ? '⚠' : '✓'}</div>
+          <div class="eval-meta">${hab ? SEDE_LABEL[hab.sede] : ''}${hab && hab.piso ? ' · ' + hab.piso : ''} · ${fechaHoraLegible(e.fecha)}${prio}</div>
+        </div>
       </div>`;
-    }).join('');
-  }
-  $('#resumen-lista').innerHTML = html || '<p class="hint">Sin evaluaciones para mostrar.</p>';
+  }).join('');
+
+  $$('#generar-lista .eval-card').forEach(card => {
+    const id = card.dataset.evalId;
+    card.addEventListener('click', (ev) => {
+      if (ev.target.tagName !== 'INPUT') {
+        const cb = card.querySelector('.eval-check');
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event('change'));
+      }
+    });
+    card.querySelector('.eval-check').addEventListener('change', (ev) => {
+      if (ev.target.checked) State.generar_seleccion.add(id);
+      else State.generar_seleccion.delete(id);
+      actualizarContadorGenerar();
+    });
+  });
+
+  actualizarContadorGenerar();
+}
+
+function actualizarContadorGenerar() {
+  const n = State.generar_seleccion.size;
+  $('#cnt-generar').textContent = n;
+  $('#btn-generar-pdf').disabled = n === 0;
+  $('#btn-compartir').disabled = n === 0;
 }
 
 function reporteCardHTML(eval_, conAcciones) {
@@ -688,13 +731,6 @@ function reporteCardHTML(eval_, conAcciones) {
 
 function escapeHTML(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-function finalizarRonda() {
-  State.ronda = null;
-  saveRonda();
-  showView('agenda');
-  toast('Ronda guardada', 'success');
 }
 
 // ============================================================
@@ -731,33 +767,23 @@ function renderReportes() {
 function cerrarReporte(eval_id) {
   const e = State.evaluaciones.find(x => x.id === eval_id);
   if (!e) return;
-  if (!confirm('¿Confirmas que la habitación fue reparada y se cierra el reporte?')) return;
-  e.estado = 'cerrado';
-  e.fecha_cierre = nowISO();
-  saveEvaluaciones();
-  toast('Reporte cerrado', 'success');
-  renderReportes();
+  const hab = HABITACIONES.find(h => h.id === e.hab_id);
+  showModalConfirm({
+    title: 'Cerrar reporte',
+    body: '¿Confirmas que la habitación ' + (hab ? hab.nombre : '???') + ' fue reparada?',
+    confirmLabel: 'Sí, cerrar reporte',
+    onConfirm: () => {
+      e.estado = 'cerrado';
+      e.fecha_cierre = nowISO();
+      saveEvaluaciones();
+      toast('Reporte cerrado', 'success');
+      renderReportes();
+    },
+  });
 }
 
 function iniciarReevaluacion(hab_id) {
-  State.ronda = {
-    fecha_inicio: nowISO(),
-    hab_ids: [hab_id],
-    idx: 0,
-    evaluaciones_temp: [{
-      id: uid(),
-      hab_id: hab_id,
-      fecha: nowISO(),
-      evaluador: State.config.evaluador || 'Sin nombre',
-      puntos: {},
-      prioridad: null,
-      obs_generales: '',
-      estado: 'abierto',
-      saltada: false,
-    }],
-  };
-  saveRonda();
-  showView('checklist');
+  iniciarEvaluacion(hab_id);
 }
 
 // ============================================================
@@ -777,27 +803,6 @@ function renderHistorial() {
       <div class="rep-meta">${fechaHoraLegible(e.fecha)} - ${e.evaluador} - estado: ${e.estado}</div>
     </div>`;
   }).join('');
-}
-
-function verHistorialDeHabitacion(hab_id) {
-  const evals = State.evaluaciones.filter(e => e.hab_id === hab_id).sort((a, b) => b.fecha.localeCompare(a.fecha));
-  const hab = HABITACIONES.find(h => h.id === hab_id);
-  if (!evals.length) {
-    toast(hab.nombre + ' sin evaluaciones previas');
-    return;
-  }
-  const ult = evals[0];
-  const probs = PUNTOS_CHECK
-    .filter(p => ult.puntos[p.id] && ult.puntos[p.id].estado === ESTADO_PUNTO.REPORTAR)
-    .map(p => p.label + (ult.puntos[p.id].comentario ? ': ' + ult.puntos[p.id].comentario : ''))
-    .join('\n');
-  alert(
-    hab.nombre + ' - ' + SEDE_LABEL[hab.sede] + '\n' +
-    'Última evaluación: ' + fechaHoraLegible(ult.fecha) + '\n' +
-    'Estado: ' + ult.estado + '\n\n' +
-    (probs ? 'Puntos reportados:\n' + probs : 'Sin observaciones en la última revisión.') +
-    '\n\nHistorial total: ' + evals.length + ' evaluaciones'
-  );
 }
 
 // ============================================================
@@ -898,14 +903,24 @@ Esta acción NO se puede deshacer.`,
 // ============================================================
 // PDF + COMPARTIR
 // ============================================================
+function obtenerEvaluacionesSeleccionadas() {
+  const ids = State.generar_seleccion;
+  if (!ids || !ids.size) return [];
+  return [...State.evaluaciones]
+    .filter(e => ids.has(e.id))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
+}
+
 function generarPDF() {
   if (!window.jspdf) { toast('PDF no disponible: revisa conexión', 'danger'); return null; }
+  const evals = obtenerEvaluacionesSeleccionadas();
+  if (!evals.length) { toast('Selecciona al menos una evaluación', 'danger'); return null; }
+
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
 
-  const ronda = State.ronda;
-  const evals = ronda ? ronda.evaluaciones_temp.filter(e => !e.saltada) : [];
   const conProblemas = evals.filter(tieneProblemas);
+  const fechaReporte = nowISO();
 
   // Cabecera
   doc.setFillColor(13, 79, 124);
@@ -916,7 +931,7 @@ function generarPDF() {
 
   doc.setTextColor(40, 40, 40);
   doc.setFontSize(10);
-  doc.text('Fecha: ' + fechaHoraLegible(ronda.fecha_inicio), 40, 92);
+  doc.text('Fecha del reporte: ' + fechaHoraLegible(fechaReporte), 40, 92);
   doc.text('Evaluador: ' + (State.config.evaluador || 'Sin nombre'), 40, 108);
   doc.text('Habitaciones evaluadas: ' + evals.length + '  |  Con reporte: ' + conProblemas.length, 40, 124);
 
@@ -1048,10 +1063,11 @@ function generarPDF() {
 }
 
 function compartirReporte() {
-  if (!State.ronda) { toast('No hay ronda activa', 'danger'); return; }
-  const evals = State.ronda.evaluaciones_temp.filter(e => !e.saltada);
+  const evals = obtenerEvaluacionesSeleccionadas();
+  if (!evals.length) { toast('Selecciona al menos una evaluación', 'danger'); return; }
+
   const conProblemas = evals.filter(tieneProblemas);
-  const fecha = fechaLegible(State.ronda.fecha_inicio);
+  const fecha = fechaLegible(nowISO());
 
   let body = `Reporte de evaluación de habitaciones - ${fecha}\n`;
   body += `Evaluador: ${State.config.evaluador || 'Sin nombre'}\n`;
@@ -1147,18 +1163,11 @@ function init() {
   loadEvaluaciones();
   loadRonda();
 
-  // Si hay una ronda en curso, retomarla
-  if (State.ronda && State.ronda.evaluaciones_temp && State.ronda.evaluaciones_temp.length) {
-    if (State.ronda.idx < State.ronda.evaluaciones_temp.length) {
-      if (confirm('Hay una ronda sin terminar. ¿Continuarla?')) {
-        showView('checklist');
-        return;
-      } else {
-        State.ronda = null;
-        saveRonda();
-      }
-    } else {
-      // Quedó en el resumen
+  // Saneo: si hay una "ronda" antigua (multi-room) o inconsistente, descartarla silenciosamente
+  if (State.ronda) {
+    const evals = State.ronda.evaluaciones_temp;
+    const valida = evals && evals.length === 1 && !evals[0].fecha_guardado;
+    if (!valida) {
       State.ronda = null;
       saveRonda();
     }
@@ -1166,22 +1175,39 @@ function init() {
 
   showView('agenda');
 
-  // Filtros sede
-  $$('.chip').forEach(c => c.addEventListener('click', () => {
-    $$('.chip').forEach(x => x.classList.remove('active'));
+  // Si hay una evaluación a medias, ofrecer retomar después de renderizar
+  if (State.ronda && State.ronda.evaluaciones_temp.length) {
+    const e = State.ronda.evaluaciones_temp[0];
+    const hab = HABITACIONES.find(h => h.id === e.hab_id);
+    setTimeout(() => {
+      showModalConfirm({
+        title: 'Evaluación a medias',
+        body: 'Quedó la evaluación de ' + (hab ? hab.nombre : '???') + ' sin guardar. ¿Continuarla?',
+        confirmLabel: 'Sí, continuar',
+        onConfirm: () => showView('checklist'),
+      });
+    }, 200);
+  }
+
+  // Chips sede (vista agenda)
+  $$('#view-agenda .chip').forEach(c => c.addEventListener('click', () => {
+    $$('#view-agenda .chip').forEach(x => x.classList.remove('active'));
     c.classList.add('active');
     State.filtro_sede = c.dataset.sede;
-    if (State.vista_actual === 'agenda') renderAgenda();
+    renderAgenda();
+  }));
+
+  // Chips rango (vista generar)
+  $$('#view-generar .chip').forEach(c => c.addEventListener('click', () => {
+    State.filtro_rango = c.dataset.rango;
+    State.generar_seleccion = new Set(); // re-seleccionar todas al cambiar rango
+    renderGenerar();
   }));
 
   // Top bar
   $('#btn-back').addEventListener('click', () => {
-    if (State.vista_actual === 'checklist' || State.vista_actual === 'seleccion') {
-      if (confirm('Salir cancelará la ronda en curso. ¿Confirmas?')) {
-        State.ronda = null;
-        saveRonda();
-        showView('agenda');
-      }
+    if (State.vista_actual === 'checklist') {
+      cancelarEvaluacion();
     } else {
       showView('agenda');
     }
@@ -1206,15 +1232,14 @@ function init() {
   });
 
   // Agenda
-  $('#btn-iniciar-ronda').addEventListener('click', () => showView('seleccion'));
-
-  // Selección
-  $('#btn-cancelar-seleccion').addEventListener('click', () => showView('agenda'));
-  $('#btn-comenzar').addEventListener('click', comenzarRonda);
+  $('#btn-ir-generar').addEventListener('click', () => {
+    State.generar_seleccion = new Set();
+    showView('generar');
+  });
 
   // Checklist
-  $('#btn-guardar-siguiente').addEventListener('click', guardarYSiguiente);
-  $('#btn-saltar').addEventListener('click', saltarHabitacion);
+  $('#btn-guardar-eval').addEventListener('click', guardarEvaluacion);
+  $('#btn-cancelar-eval').addEventListener('click', cancelarEvaluacion);
   $$('.prio').forEach(b => b.addEventListener('click', () => {
     $$('.prio').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
@@ -1224,10 +1249,18 @@ function init() {
     }
   }));
 
-  // Resumen
+  // Generar
+  $('#btn-sel-todo').addEventListener('click', () => {
+    const evals = evaluacionesEnRango(State.filtro_rango);
+    State.generar_seleccion = new Set(evals.map(e => e.id));
+    renderGenerar();
+  });
+  $('#btn-sel-nada').addEventListener('click', () => {
+    State.generar_seleccion = new Set();
+    renderGenerar();
+  });
   $('#btn-generar-pdf').addEventListener('click', generarPDF);
   $('#btn-compartir').addEventListener('click', compartirReporte);
-  $('#btn-finalizar').addEventListener('click', finalizarRonda);
 
   // Config
   $('#btn-guardar-config').addEventListener('click', guardarConfig);

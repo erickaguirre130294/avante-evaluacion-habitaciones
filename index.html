@@ -18,6 +18,7 @@
 
   <nav id="side-menu" class="side-menu hidden">
     <button class="menu-item" data-view="agenda">Agenda</button>
+    <button class="menu-item" data-view="generar">Generar reporte</button>
     <button class="menu-item" data-view="reportes">Reportes abiertos</button>
     <button class="menu-item" data-view="historial">Historial</button>
     <button class="menu-item" data-view="config">Configuración</button>
@@ -36,18 +37,10 @@
         <button class="chip" data-sede="CENTRO_MEDICO">Centro Méd.</button>
       </div>
       <div class="agenda-stats" id="agenda-stats"></div>
+      <p class="hint" style="margin:8px 4px 12px">Toca una habitación para evaluarla. Cuando termines de evaluar todas las que quieras, usa el botón de abajo para generar el reporte consolidado.</p>
       <div id="agenda-lista" class="lista-habitaciones"></div>
       <div class="bottom-bar">
-        <button id="btn-iniciar-ronda" class="btn-primary">Iniciar ronda</button>
-      </div>
-    </section>
-
-    <section id="view-seleccion" class="view">
-      <p class="hint">Marca las habitaciones que vas a evaluar en esta ronda. Las ocupadas o no disponibles déjalas sin marcar.</p>
-      <div id="seleccion-lista" class="lista-habitaciones"></div>
-      <div class="bottom-bar">
-        <button id="btn-cancelar-seleccion" class="btn-secondary">Cancelar</button>
-        <button id="btn-comenzar" class="btn-primary">Comenzar (<span id="cnt-seleccionadas">0</span>)</button>
+        <button id="btn-ir-generar" class="btn-primary">📄 Generar reporte</button>
       </div>
     </section>
 
@@ -57,7 +50,6 @@
           <div class="hab-nombre" id="check-hab-nombre">-</div>
           <div class="hab-meta" id="check-hab-meta">-</div>
         </div>
-        <div class="progreso" id="check-progreso">1 de 1</div>
       </div>
 
       <div id="checklist-items" class="checklist-items"></div>
@@ -76,21 +68,27 @@
       <textarea id="check-obs-generales" placeholder="Notas adicionales del evaluador..." rows="2"></textarea>
 
       <div class="bottom-bar">
-        <button id="btn-saltar" class="btn-secondary">Saltar</button>
-        <button id="btn-guardar-siguiente" class="btn-primary">Guardar y siguiente</button>
+        <button id="btn-cancelar-eval" class="btn-secondary">Cancelar</button>
+        <button id="btn-guardar-eval" class="btn-primary">💾 Guardar evaluación</button>
       </div>
     </section>
 
-    <section id="view-resumen" class="view">
-      <div class="resumen-cabecera">
-        <div class="resumen-fecha" id="resumen-fecha">-</div>
-        <div class="resumen-stats" id="resumen-stats"></div>
+    <section id="view-generar" class="view">
+      <div class="filters" style="flex-wrap:wrap">
+        <button class="chip active" data-rango="hoy">Hoy</button>
+        <button class="chip" data-rango="7">Últimos 7 días</button>
+        <button class="chip" data-rango="30">Últimos 30 días</button>
+        <button class="chip" data-rango="todo">Todo</button>
       </div>
-      <div id="resumen-lista" class="resumen-lista"></div>
+      <div class="agenda-stats" id="generar-stats"></div>
+      <div class="generar-acciones">
+        <button id="btn-sel-todo" class="btn-secondary mini-btn">Seleccionar todas</button>
+        <button id="btn-sel-nada" class="btn-secondary mini-btn">Quitar selección</button>
+      </div>
+      <div id="generar-lista" class="lista-habitaciones"></div>
       <div class="bottom-bar bottom-bar-stack">
-        <button id="btn-generar-pdf" class="btn-primary">Generar PDF</button>
-        <button id="btn-compartir" class="btn-secondary">Email / WhatsApp</button>
-        <button id="btn-finalizar" class="btn-tertiary">Finalizar ronda</button>
+        <button id="btn-generar-pdf" class="btn-primary">📄 Generar PDF (<span id="cnt-generar">0</span>)</button>
+        <button id="btn-compartir" class="btn-secondary">📧 Email / WhatsApp</button>
       </div>
     </section>
 
@@ -130,7 +128,7 @@
         <button id="btn-borrar-todo" class="btn-danger">Borrar TODOS los datos</button>
       </div>
 
-      <p class="version">v1.3 - Complejo Avante</p>
+      <p class="version">v1.4 - Complejo Avante</p>
     </section>
 
   </main>
