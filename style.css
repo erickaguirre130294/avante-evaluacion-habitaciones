@@ -530,6 +530,76 @@ textarea { resize: vertical; }
   min-height: var(--tap);
 }
 .btn-danger:active { background: #8e2126; }
+.btn-danger:disabled { background: var(--gray-300); cursor: not-allowed; }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal {
+  background: white;
+  border-radius: var(--radius);
+  padding: 22px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: var(--shadow-md);
+  animation: fadeIn 0.15s;
+}
+.modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--danger);
+  margin-bottom: 12px;
+}
+.modal-body {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--gray-700);
+  white-space: pre-line;
+  margin-bottom: 16px;
+}
+.modal-input {
+  width: 100%;
+  padding: 14px;
+  border: 2px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  font-size: 16px;
+  text-transform: uppercase;
+}
+.modal-input:focus { border-color: var(--danger); outline: none; }
+.modal-actions {
+  display: flex;
+  gap: 8px;
+}
+.modal-actions button {
+  flex: 1;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  cursor: pointer;
+  min-height: var(--tap);
+  border: 1px solid;
+  font-size: 14px;
+}
+.modal-actions .btn-secondary {
+  background: white;
+  color: var(--gray-700);
+  border-color: var(--gray-200);
+}
+.modal-actions .btn-danger {
+  background: var(--danger);
+  color: white;
+  border-color: var(--danger);
+}
 
 /* ============================================================
    Toast

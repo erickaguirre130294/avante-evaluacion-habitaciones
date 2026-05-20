@@ -14,6 +14,7 @@
 const PUNTOS_CHECK = [
   { id: 'puerta',         label: 'Puerta y cerradura' },
   { id: 'cama',           label: 'Cama y colchón' },
+  { id: 'sofa',           label: 'Sofá / Sillón de acompañante' },
   { id: 'ac',             label: 'Aire acondicionado' },
   { id: 'bano',           label: 'Baño / Sanitario' },
   { id: 'regadera',       label: 'Regadera' },
@@ -820,39 +821,78 @@ function guardarConfig() {
   toast('Configuración guardada', 'success');
 }
 
+function showModalConfirm({ title, body, requireText, confirmLabel, onConfirm }) {
+  const backdrop = $('#modal-backdrop');
+  const titleEl = $('#modal-title');
+  const bodyEl = $('#modal-body');
+  const inputEl = $('#modal-input');
+  const cancelBtn = $('#modal-cancel');
+  const confirmBtn = $('#modal-confirm');
+
+  titleEl.textContent = title || 'Confirmar';
+  bodyEl.textContent = body || '';
+  confirmBtn.textContent = confirmLabel || 'Confirmar';
+
+  if (requireText) {
+    inputEl.classList.remove('hidden');
+    inputEl.value = '';
+    inputEl.placeholder = 'Escribe ' + requireText;
+    confirmBtn.disabled = true;
+    inputEl.oninput = () => {
+      confirmBtn.disabled = inputEl.value.trim().toUpperCase() !== requireText.toUpperCase();
+    };
+  } else {
+    inputEl.classList.add('hidden');
+    confirmBtn.disabled = false;
+  }
+
+  const cerrar = () => {
+    backdrop.classList.add('hidden');
+    cancelBtn.onclick = null;
+    confirmBtn.onclick = null;
+    inputEl.oninput = null;
+  };
+  cancelBtn.onclick = cerrar;
+  confirmBtn.onclick = () => {
+    if (requireText && inputEl.value.trim().toUpperCase() !== requireText.toUpperCase()) return;
+    cerrar();
+    if (typeof onConfirm === 'function') onConfirm();
+  };
+
+  backdrop.classList.remove('hidden');
+  if (requireText) setTimeout(() => inputEl.focus(), 100);
+}
+
 function borrarTodosLosDatos() {
   const totalEvals = State.evaluaciones.length;
   const abiertos = State.evaluaciones.filter(e => e.estado === 'abierto' && tieneProblemas(e)).length;
 
-  const msg1 = `Se van a borrar:
-- ${totalEvals} evaluaciones del historial
-- ${abiertos} reportes abiertos
-- Configuración (nombre, email, umbrales)
-- Ronda en curso (si la hay)
+  showModalConfirm({
+    title: 'Borrar TODOS los datos',
+    body: `Se van a borrar:
+• ${totalEvals} evaluaciones del historial
+• ${abiertos} reportes abiertos
+• Configuración (nombre, email, umbrales)
+• Ronda en curso (si la hay)
 
-Esta acción NO se puede deshacer.
+Esta acción NO se puede deshacer.`,
+    requireText: 'BORRAR',
+    confirmLabel: 'Borrar todo',
+    onConfirm: () => {
+      localStorage.removeItem(STORAGE.CONFIG);
+      localStorage.removeItem(STORAGE.EVALUACIONES);
+      localStorage.removeItem(STORAGE.RONDA_ACTUAL);
 
-¿Continuar?`;
-  if (!confirm(msg1)) return;
+      State.config = { ...DEFAULT_CONFIG };
+      State.evaluaciones = [];
+      State.ronda = null;
+      State.ronda_eval_actual = null;
 
-  const palabra = prompt('Para confirmar, escribe la palabra BORRAR (en mayúsculas):');
-  if (palabra !== 'BORRAR') {
-    toast('Cancelado: la palabra no coincide', 'danger');
-    return;
-  }
-
-  localStorage.removeItem(STORAGE.CONFIG);
-  localStorage.removeItem(STORAGE.EVALUACIONES);
-  localStorage.removeItem(STORAGE.RONDA_ACTUAL);
-
-  State.config = { ...DEFAULT_CONFIG };
-  State.evaluaciones = [];
-  State.ronda = null;
-  State.ronda_eval_actual = null;
-
-  toast('Todos los datos fueron borrados', 'success');
-  showView('config');
-  renderConfig();
+      toast('Todos los datos fueron borrados', 'success');
+      showView('config');
+      renderConfig();
+    },
+  });
 }
 
 // ============================================================
@@ -904,68 +944,91 @@ function generarPDF() {
     columnStyles: { 4: { cellWidth: 200 } },
   });
 
-  // Detalle por habitación con problemas (con fotos)
+  // Detalle por habitación: TODAS las evaluadas, con TODOS los puntos
   let y = doc.lastAutoTable.finalY + 24;
-  conProblemas.forEach((e, idx) => {
+  evals.forEach((e, idx) => {
     const hab = HABITACIONES.find(h => h.id === e.hab_id);
+    const probs = tieneProblemas(e);
 
     if (y > 680) { doc.addPage(); y = 50; }
 
+    // Encabezado de habitación
     doc.setFillColor(245, 247, 250);
     doc.rect(40, y - 14, 532, 22, 'F');
     doc.setTextColor(13, 79, 124);
     doc.setFontSize(13);
+    doc.setFont(undefined, 'bold');
     doc.text(`${idx + 1}. ${hab.nombre} - ${SEDE_LABEL[hab.sede]}${hab.piso ? ' (' + hab.piso + ')' : ''}`, 46, y);
+    doc.setFont(undefined, 'normal');
+    y += 18;
+
+    // Línea de estado
+    doc.setFontSize(10);
+    doc.setTextColor(probs ? 194 : 30, probs ? 51 : 140, probs ? 58 : 77);
+    doc.setFont(undefined, 'bold');
+    doc.text(probs ? 'Requiere intervención' : 'Sin observaciones', 46, y);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(60, 60, 60);
+    if (e.prioridad) doc.text('  |  Prioridad: ' + PRIO_LABEL[e.prioridad], 200, y);
     y += 16;
 
-    doc.setTextColor(60, 60, 60);
-    doc.setFontSize(10);
-    if (e.prioridad) { doc.text('Prioridad: ' + PRIO_LABEL[e.prioridad], 46, y); y += 14; }
-
+    // TODOS los puntos del checklist (no solo los reportados)
     PUNTOS_CHECK.forEach(p => {
-      const data = e.puntos[p.id];
-      if (!data || data.estado !== ESTADO_PUNTO.REPORTAR) return;
+      const data = e.puntos[p.id] || { estado: ESTADO_PUNTO.PENDIENTE };
+      let etiqueta, color;
+      if (data.estado === ESTADO_PUNTO.OK)            { etiqueta = '[ OK ]';       color = [30, 140, 77]; }
+      else if (data.estado === ESTADO_PUNTO.REPORTAR) { etiqueta = '[ REPORTAR ]'; color = [194, 51, 58]; }
+      else                                            { etiqueta = '[ N/R ]';      color = [140, 140, 140]; }
 
-      if (y > 720) { doc.addPage(); y = 50; }
+      if (y > 730) { doc.addPage(); y = 50; }
 
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.setFont(undefined, 'bold');
-      doc.text('- ' + p.label, 46, y);
+      doc.setTextColor(color[0], color[1], color[2]);
+      doc.text(etiqueta, 46, y);
       doc.setFont(undefined, 'normal');
-      y += 13;
+      doc.setTextColor(60, 60, 60);
+      doc.text(p.label, 130, y);
+      y += 12;
 
-      if (data.comentario) {
-        const lines = doc.splitTextToSize(data.comentario, 480);
-        doc.text(lines, 60, y);
-        y += lines.length * 12;
+      // Solo mostrar comentario + fotos si es REPORTAR
+      if (data.estado === ESTADO_PUNTO.REPORTAR) {
+        if (data.comentario) {
+          const lines = doc.splitTextToSize(data.comentario, 450);
+          doc.setFontSize(9);
+          doc.setTextColor(80, 80, 80);
+          doc.text(lines, 136, y);
+          y += lines.length * 11 + 2;
+        }
+        const fotos = data.fotos || (data.foto ? [data.foto] : []);
+        if (fotos.length) {
+          const PHOTO_W = 105, PHOTO_H = 78, GAP = 6, PER_ROW = 4;
+          let col = 0;
+          const xStart = 136;
+          fotos.forEach((foto) => {
+            if (col === 0 && y + PHOTO_H > 730) { doc.addPage(); y = 50; }
+            try {
+              doc.addImage(foto, 'JPEG', xStart + col * (PHOTO_W + GAP), y, PHOTO_W, PHOTO_H);
+            } catch (err) { /* skip si falla */ }
+            col++;
+            if (col >= PER_ROW) { col = 0; y += PHOTO_H + GAP; }
+          });
+          if (col > 0) y += PHOTO_H + GAP;
+        }
+        y += 4;
       }
-      const fotos = data.fotos || (data.foto ? [data.foto] : []);
-      if (fotos.length) {
-        const PHOTO_W = 120, PHOTO_H = 90, GAP = 8, PER_ROW = 3;
-        let col = 0;
-        const xStart = 60;
-        fotos.forEach((foto) => {
-          if (col === 0 && y + PHOTO_H > 720) { doc.addPage(); y = 50; }
-          try {
-            doc.addImage(foto, 'JPEG', xStart + col * (PHOTO_W + GAP), y, PHOTO_W, PHOTO_H);
-          } catch (err) { /* skip foto si falla */ }
-          col++;
-          if (col >= PER_ROW) { col = 0; y += PHOTO_H + GAP; }
-        });
-        if (col > 0) y += PHOTO_H + GAP;
-      }
-      y += 6;
     });
 
     if (e.obs_generales) {
-      const lines = doc.splitTextToSize('Notas: ' + e.obs_generales, 500);
-      if (y + lines.length * 12 > 720) { doc.addPage(); y = 50; }
+      const lines = doc.splitTextToSize('Observaciones generales: ' + e.obs_generales, 500);
+      if (y + lines.length * 12 > 730) { doc.addPage(); y = 50; }
       doc.setFont(undefined, 'italic');
+      doc.setTextColor(60, 60, 60);
       doc.text(lines, 46, y);
       doc.setFont(undefined, 'normal');
       y += lines.length * 12 + 8;
     }
-    y += 12;
+    y += 14;
   });
 
   // Pie de página

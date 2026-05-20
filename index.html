@@ -130,12 +130,24 @@
         <button id="btn-borrar-todo" class="btn-danger">Borrar TODOS los datos</button>
       </div>
 
-      <p class="version">v1.2 - Complejo Avante</p>
+      <p class="version">v1.3 - Complejo Avante</p>
     </section>
 
   </main>
 
   <div id="toast" class="toast hidden"></div>
+
+  <div id="modal-backdrop" class="modal-backdrop hidden">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-title" id="modal-title">Confirmar</div>
+      <div class="modal-body" id="modal-body"></div>
+      <input type="text" id="modal-input" class="modal-input hidden" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <div class="modal-actions">
+        <button id="modal-cancel" class="btn-secondary">Cancelar</button>
+        <button id="modal-confirm" class="btn-danger">Confirmar</button>
+      </div>
+    </div>
+  </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.0/jspdf.plugin.autotable.min.js"></script>
