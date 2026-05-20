@@ -87,7 +87,7 @@ const HABITACIONES = [
   { id: 'CM-BARCELONA',       nombre: 'BARCELONA',        sede: 'CENTRO_MEDICO', piso: '', categoria: 'HOSPITALIZACION' },
   { id: 'CM-ISLA_DE_CAPRI',   nombre: 'ISLA DE CAPRI',    sede: 'CENTRO_MEDICO', piso: '', categoria: 'HOSPITALIZACION' },
   { id: 'CM-BRUSELAS',        nombre: 'BRUSELAS',         sede: 'CENTRO_MEDICO', piso: '', categoria: 'HOSPITALIZACION' },
-  { id: 'CM-HERMES',          nombre: 'HERMES',           sede: 'CENTRO_MEDICO', piso: '', categoria: 'HOSPITALIZACION' },
+  { id: 'CM-ATENAS',          nombre: 'ATENAS',           sede: 'CENTRO_MEDICO', piso: '', categoria: 'HOSPITALIZACION' },
   { id: 'CM-LISBOA',          nombre: 'LISBOA',           sede: 'CENTRO_MEDICO', piso: '', categoria: 'HOSPITALIZACION' },
   { id: 'CM-LONDRES',         nombre: 'LONDRES',          sede: 'CENTRO_MEDICO', piso: '', categoria: 'HOSPITALIZACION' },
   { id: 'CM-MADRID',          nombre: 'MADRID',           sede: 'CENTRO_MEDICO', piso: '', categoria: 'HOSPITALIZACION' },
@@ -107,6 +107,13 @@ const SEDE_LABEL = {
 
 const PRIO_LABEL = { baja: 'Baja', media: 'Media', alta: 'Alta', critica: 'Crítica' };
 const ESTADO_PUNTO = { OK: 'ok', REPORTAR: 'reportar', PENDIENTE: 'pendiente' };
+
+// Puntos que, si están reportados, afectan el USO o SEGURIDAD del paciente
+// y por defecto suben la prioridad a Alta automáticamente.
+const PUNTOS_CRITICOS = new Set(['puerta', 'cama', 'ac', 'bano', 'regadera', 'lavamanos', 'iluminacion', 'tomacorrientes', 'limpieza']);
+
+// Migraciones de hab_id (cuando renombramos habitaciones, mantenemos compat con evaluaciones viejas)
+const HAB_ID_MIGRATIONS = { 'CM-HERMES': 'CM-ATENAS' };
 
 const STORAGE = {
   CONFIG:        'eh_config',
@@ -152,6 +159,15 @@ function loadEvaluaciones() {
   try {
     const raw = localStorage.getItem(STORAGE.EVALUACIONES);
     State.evaluaciones = raw ? JSON.parse(raw) : [];
+    // Migrar hab_ids renombrados
+    let dirty = false;
+    State.evaluaciones.forEach(e => {
+      if (HAB_ID_MIGRATIONS[e.hab_id]) {
+        e.hab_id = HAB_ID_MIGRATIONS[e.hab_id];
+        dirty = true;
+      }
+    });
+    if (dirty) saveEvaluaciones();
   } catch (e) { State.evaluaciones = []; }
 }
 function saveEvaluaciones() {
@@ -257,6 +273,16 @@ function reporteAbiertoHab(hab_id) {
 function tieneProblemas(eval_) {
   if (!eval_ || !eval_.puntos) return false;
   return Object.values(eval_.puntos).some(p => p.estado === ESTADO_PUNTO.REPORTAR);
+}
+
+function calcularPrioridadAuto(eval_) {
+  if (!eval_ || !eval_.puntos) return 'media';
+  const reportados = Object.entries(eval_.puntos)
+    .filter(([, p]) => p.estado === ESTADO_PUNTO.REPORTAR)
+    .map(([id]) => id);
+  if (!reportados.length) return 'media';
+  const hayCritico = reportados.some(id => PUNTOS_CRITICOS.has(id));
+  return hayCritico ? 'alta' : 'media';
 }
 
 function semaforoHab(hab) {
@@ -598,9 +624,11 @@ function guardarEvaluacion() {
     return;
   }
 
-  // Si hay problemas pero no se asignó prioridad, default Media (no bloqueamos)
+  // Si hay problemas pero no se asignó prioridad, calcular automáticamente
+  // según los puntos reportados (Alta si afecta uso/seguridad, Media si es estético)
   if (hayProblemas && !State.ronda_eval_actual.prioridad) {
-    State.ronda_eval_actual.prioridad = 'media';
+    State.ronda_eval_actual.prioridad = calcularPrioridadAuto(State.ronda_eval_actual);
+    State.ronda_eval_actual.prioridad_auto = true;
   }
 
   State.ronda_eval_actual.fecha = nowISO();
