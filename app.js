@@ -798,6 +798,41 @@ function guardarConfig() {
   toast('Configuración guardada', 'success');
 }
 
+function borrarTodosLosDatos() {
+  const totalEvals = State.evaluaciones.length;
+  const abiertos = State.evaluaciones.filter(e => e.estado === 'abierto' && tieneProblemas(e)).length;
+
+  const msg1 = `Se van a borrar:
+- ${totalEvals} evaluaciones del historial
+- ${abiertos} reportes abiertos
+- Configuración (nombre, email, umbrales)
+- Ronda en curso (si la hay)
+
+Esta acción NO se puede deshacer.
+
+¿Continuar?`;
+  if (!confirm(msg1)) return;
+
+  const palabra = prompt('Para confirmar, escribe la palabra BORRAR (en mayúsculas):');
+  if (palabra !== 'BORRAR') {
+    toast('Cancelado: la palabra no coincide', 'danger');
+    return;
+  }
+
+  localStorage.removeItem(STORAGE.CONFIG);
+  localStorage.removeItem(STORAGE.EVALUACIONES);
+  localStorage.removeItem(STORAGE.RONDA_ACTUAL);
+
+  State.config = { ...DEFAULT_CONFIG };
+  State.evaluaciones = [];
+  State.ronda = null;
+  State.ronda_eval_actual = null;
+
+  toast('Todos los datos fueron borrados', 'success');
+  showView('config');
+  renderConfig();
+}
+
 // ============================================================
 // PDF + COMPARTIR
 // ============================================================
@@ -1103,6 +1138,7 @@ function init() {
 
   // Config
   $('#btn-guardar-config').addEventListener('click', guardarConfig);
+  $('#btn-borrar-todo').addEventListener('click', borrarTodosLosDatos);
 
   // Prevent accidental swipe-to-back on iOS
   document.addEventListener('touchmove', (e) => {
