@@ -1,0 +1,10 @@
+# Backups locales (los exports de datos NO suben al repo)
+eh_backup_*.json
+backups/
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+*.swp

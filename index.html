@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0d4f7c">
+  <title>Evaluación Habitaciones — Avante</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+</head>
+<body>
+
+  <header class="topbar">
+    <button id="btn-back" class="btn-icon hidden" aria-label="Atrás">←</button>
+    <h1 id="topbar-title">Evaluación Habitaciones</h1>
+    <button id="btn-menu" class="btn-icon" aria-label="Menú">☰</button>
+  </header>
+
+  <nav id="side-menu" class="side-menu hidden">
+    <button class="menu-item" data-view="agenda">Agenda</button>
+    <button class="menu-item" data-view="reportes">Reportes abiertos</button>
+    <button class="menu-item" data-view="historial">Historial</button>
+    <button class="menu-item" data-view="config">Configuración</button>
+    <hr>
+    <button class="menu-item danger" id="btn-export-data">Exportar datos (JSON)</button>
+    <button class="menu-item danger" id="btn-import-data">Importar datos (JSON)</button>
+    <input type="file" id="file-import" accept="application/json" style="display:none">
+  </nav>
+
+  <main id="app">
+
+    <section id="view-agenda" class="view active">
+      <div class="filters">
+        <button class="chip active" data-sede="todas">Todas</button>
+        <button class="chip" data-sede="HOSPITAL_ESPECIALIZADO">Hosp. Esp.</button>
+        <button class="chip" data-sede="CENTRO_MEDICO">Centro Méd.</button>
+      </div>
+      <div class="agenda-stats" id="agenda-stats"></div>
+      <div id="agenda-lista" class="lista-habitaciones"></div>
+      <div class="bottom-bar">
+        <button id="btn-iniciar-ronda" class="btn-primary">Iniciar ronda</button>
+      </div>
+    </section>
+
+    <section id="view-seleccion" class="view">
+      <p class="hint">Marca las habitaciones que vas a evaluar en esta ronda. Las ocupadas o no disponibles déjalas sin marcar.</p>
+      <div id="seleccion-lista" class="lista-habitaciones"></div>
+      <div class="bottom-bar">
+        <button id="btn-cancelar-seleccion" class="btn-secondary">Cancelar</button>
+        <button id="btn-comenzar" class="btn-primary">Comenzar (<span id="cnt-seleccionadas">0</span>)</button>
+      </div>
+    </section>
+
+    <section id="view-checklist" class="view">
+      <div class="checklist-header">
+        <div class="hab-info">
+          <div class="hab-nombre" id="check-hab-nombre">-</div>
+          <div class="hab-meta" id="check-hab-meta">-</div>
+        </div>
+        <div class="progreso" id="check-progreso">1 de 1</div>
+      </div>
+
+      <div id="checklist-items" class="checklist-items"></div>
+
+      <div class="prioridad-bloque">
+        <label class="bloque-label">Prioridad general del reporte</label>
+        <div class="prioridad-opts">
+          <button class="prio" data-prio="baja">Baja</button>
+          <button class="prio" data-prio="media">Media</button>
+          <button class="prio" data-prio="alta">Alta</button>
+          <button class="prio" data-prio="critica">Crítica</button>
+        </div>
+      </div>
+
+      <label class="bloque-label">Observaciones generales (opcional)</label>
+      <textarea id="check-obs-generales" placeholder="Notas adicionales del evaluador..." rows="2"></textarea>
+
+      <div class="bottom-bar">
+        <button id="btn-saltar" class="btn-secondary">Saltar</button>
+        <button id="btn-guardar-siguiente" class="btn-primary">Guardar y siguiente</button>
+      </div>
+    </section>
+
+    <section id="view-resumen" class="view">
+      <div class="resumen-cabecera">
+        <div class="resumen-fecha" id="resumen-fecha">-</div>
+        <div class="resumen-stats" id="resumen-stats"></div>
+      </div>
+      <div id="resumen-lista" class="resumen-lista"></div>
+      <div class="bottom-bar bottom-bar-stack">
+        <button id="btn-generar-pdf" class="btn-primary">Generar PDF</button>
+        <button id="btn-compartir" class="btn-secondary">Email / WhatsApp</button>
+        <button id="btn-finalizar" class="btn-tertiary">Finalizar ronda</button>
+      </div>
+    </section>
+
+    <section id="view-reportes" class="view">
+      <div class="agenda-stats" id="reportes-stats"></div>
+      <div id="reportes-lista" class="reportes-lista"></div>
+    </section>
+
+    <section id="view-historial" class="view">
+      <div id="historial-lista" class="historial-lista"></div>
+    </section>
+
+    <section id="view-config" class="view">
+      <label class="config-label">Nombre del evaluador</label>
+      <input type="text" id="cfg-evaluador" placeholder="Tu nombre">
+
+      <label class="config-label">Email de mantenimiento (destino del reporte)</label>
+      <input type="email" id="cfg-email" placeholder="mantenimiento@complejoavante.com">
+
+      <label class="config-label">CC adicional (opcional, separados por coma)</label>
+      <input type="text" id="cfg-cc" placeholder="supervisor@complejoavante.com">
+
+      <label class="config-label">Días para considerar habitación "sin revisar"</label>
+      <input type="number" id="cfg-dias-amarillo" value="14" min="1" max="180">
+
+      <label class="config-label">Días para considerar habitación "vencida"</label>
+      <input type="number" id="cfg-dias-rojo" value="30" min="1" max="365">
+
+      <button id="btn-guardar-config" class="btn-primary" style="margin-top:24px">Guardar configuración</button>
+
+      <hr>
+      <p class="hint">Datos almacenados localmente en este navegador. Para no perderlos al cambiar de celular, exporta el JSON desde el menú.</p>
+      <p class="version">v1.0 - Complejo Avante</p>
+    </section>
+
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.0/jspdf.plugin.autotable.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
