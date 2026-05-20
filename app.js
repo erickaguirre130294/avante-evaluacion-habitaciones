@@ -177,6 +177,11 @@ function saveRonda() {
 // ============================================================
 function $(sel, ctx) { return (ctx || document).querySelector(sel); }
 function $$(sel, ctx) { return Array.from((ctx || document).querySelectorAll(sel)); }
+function on(sel, evt, fn) {
+  const el = $(sel);
+  if (el) el.addEventListener(evt, fn);
+  else console.warn('[on] elemento no encontrado:', sel);
+}
 function uid() { return 'e_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); }
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function nowISO() { return new Date().toISOString(); }
@@ -569,22 +574,33 @@ function renderFotoPreview(div, fotos) {
 }
 
 function guardarEvaluacion() {
-  if (!State.ronda_eval_actual) return;
+  if (!State.ronda_eval_actual) {
+    toast('No hay evaluación en curso', 'danger');
+    return;
+  }
 
   const obs = $('#check-obs-generales').value.trim();
   State.ronda_eval_actual.obs_generales = obs;
 
   const hayProblemas = tieneProblemas(State.ronda_eval_actual);
-  if (hayProblemas && !State.ronda_eval_actual.prioridad) {
-    toast('Asigna una prioridad antes de guardar', 'danger');
-    return;
-  }
 
   const algunMarcado = Object.values(State.ronda_eval_actual.puntos)
     .some(p => p.estado === ESTADO_PUNTO.OK || p.estado === ESTADO_PUNTO.REPORTAR);
   if (!algunMarcado) {
-    toast('Marca al menos un punto antes de guardar', 'danger');
+    showModalConfirm({
+      title: 'Sin marcar ningún punto',
+      body: 'No marcaste OK ni Reportar en ninguno de los puntos del checklist. Marca al menos uno para poder guardar la evaluación.',
+      confirmLabel: 'Entendido',
+      onConfirm: () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      },
+    });
     return;
+  }
+
+  // Si hay problemas pero no se asignó prioridad, default Media (no bloqueamos)
+  if (hayProblemas && !State.ronda_eval_actual.prioridad) {
+    State.ronda_eval_actual.prioridad = 'media';
   }
 
   State.ronda_eval_actual.fecha = nowISO();
@@ -1225,21 +1241,21 @@ function init() {
   $$('#side-menu .menu-item[data-view]').forEach(b => {
     b.addEventListener('click', () => showView(b.dataset.view));
   });
-  $('#btn-export-data').addEventListener('click', exportarDatos);
-  $('#btn-import-data').addEventListener('click', () => $('#file-import').click());
-  $('#file-import').addEventListener('change', (e) => {
+  on('#btn-export-data', 'click', exportarDatos);
+  on('#btn-import-data', 'click', () => $('#file-import').click());
+  on('#file-import', 'change', (e) => {
     if (e.target.files[0]) importarDatos(e.target.files[0]);
   });
 
   // Agenda
-  $('#btn-ir-generar').addEventListener('click', () => {
+  on('#btn-ir-generar', 'click', () => {
     State.generar_seleccion = new Set();
     showView('generar');
   });
 
   // Checklist
-  $('#btn-guardar-eval').addEventListener('click', guardarEvaluacion);
-  $('#btn-cancelar-eval').addEventListener('click', cancelarEvaluacion);
+  on('#btn-guardar-eval', 'click', guardarEvaluacion);
+  on('#btn-cancelar-eval', 'click', cancelarEvaluacion);
   $$('.prio').forEach(b => b.addEventListener('click', () => {
     $$('.prio').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
@@ -1250,21 +1266,21 @@ function init() {
   }));
 
   // Generar
-  $('#btn-sel-todo').addEventListener('click', () => {
+  on('#btn-sel-todo', 'click', () => {
     const evals = evaluacionesEnRango(State.filtro_rango);
     State.generar_seleccion = new Set(evals.map(e => e.id));
     renderGenerar();
   });
-  $('#btn-sel-nada').addEventListener('click', () => {
+  on('#btn-sel-nada', 'click', () => {
     State.generar_seleccion = new Set();
     renderGenerar();
   });
-  $('#btn-generar-pdf').addEventListener('click', generarPDF);
-  $('#btn-compartir').addEventListener('click', compartirReporte);
+  on('#btn-generar-pdf', 'click', generarPDF);
+  on('#btn-compartir', 'click', compartirReporte);
 
   // Config
-  $('#btn-guardar-config').addEventListener('click', guardarConfig);
-  $('#btn-borrar-todo').addEventListener('click', borrarTodosLosDatos);
+  on('#btn-guardar-config', 'click', guardarConfig);
+  on('#btn-borrar-todo', 'click', borrarTodosLosDatos);
 
   // Prevent accidental swipe-to-back on iOS
   document.addEventListener('touchmove', (e) => {
