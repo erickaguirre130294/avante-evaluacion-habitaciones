@@ -977,117 +977,140 @@ function generarPDF() {
   doc.setFontSize(10);
   doc.text('Fecha del reporte: ' + fechaHoraLegible(fechaReporte), 40, 92);
   doc.text('Evaluador: ' + (State.config.evaluador || 'Sin nombre'), 40, 108);
-  doc.text('Habitaciones evaluadas: ' + evals.length + '  |  Con reporte: ' + conProblemas.length, 40, 124);
+  doc.text('Habitaciones evaluadas: ' + evals.length + '  |  Con observaciones: ' + conProblemas.length, 40, 124);
 
-  // Tabla resumen
-  const rows = evals.map(e => {
+  // Mini resumen por sede
+  const porSede = {};
+  evals.forEach(e => {
     const hab = HABITACIONES.find(h => h.id === e.hab_id);
-    const probs = PUNTOS_CHECK
-      .filter(p => e.puntos[p.id] && e.puntos[p.id].estado === ESTADO_PUNTO.REPORTAR)
-      .map(p => p.label).join(', ');
-    return [
-      hab ? hab.nombre : '?',
-      SEDE_LABEL[hab.sede].replace('Hospital ', 'Hosp. '),
-      tieneProblemas(e) ? 'Requiere intervención' : 'OK',
-      e.prioridad ? PRIO_LABEL[e.prioridad] : '-',
-      probs || '-',
-    ];
+    if (!hab) return;
+    if (!porSede[hab.sede]) porSede[hab.sede] = { total: 0, problemas: 0 };
+    porSede[hab.sede].total++;
+    if (tieneProblemas(e)) porSede[hab.sede].problemas++;
+  });
+  let xResumen = 40, yResumen = 144;
+  Object.entries(porSede).forEach(([sede, c]) => {
+    doc.setFillColor(245, 247, 250);
+    doc.rect(xResumen, yResumen - 12, 250, 22, 'F');
+    doc.setTextColor(60, 60, 60);
+    doc.setFontSize(9);
+    doc.text(`${SEDE_LABEL[sede]}: ${c.total} evaluadas, ${c.problemas} con observaciones`, xResumen + 6, yResumen + 2);
+    xResumen += 260;
   });
 
-  doc.autoTable({
-    startY: 144,
-    head: [['Habitación', 'Sede', 'Estado', 'Prioridad', 'Puntos reportados']],
-    body: rows,
-    styles: { fontSize: 9, cellPadding: 5 },
-    headStyles: { fillColor: [13, 79, 124], textColor: 255 },
-    columnStyles: { 4: { cellWidth: 200 } },
-  });
-
-  // Detalle por habitación: TODAS las evaluadas, con TODOS los puntos
-  let y = doc.lastAutoTable.finalY + 24;
+  // Bloques por habitación con observaciones y fotos integradas
+  let y = 180;
   evals.forEach((e, idx) => {
     const hab = HABITACIONES.find(h => h.id === e.hab_id);
     const probs = tieneProblemas(e);
 
-    if (y > 680) { doc.addPage(); y = 50; }
+    // Reservar espacio mínimo para el bloque de encabezado
+    if (y > 660) { doc.addPage(); y = 50; }
 
-    // Encabezado de habitación
-    doc.setFillColor(245, 247, 250);
-    doc.rect(40, y - 14, 532, 22, 'F');
-    doc.setTextColor(13, 79, 124);
+    // Encabezado de habitación (barra azul)
+    doc.setFillColor(13, 79, 124);
+    doc.rect(40, y - 14, 532, 26, 'F');
+    doc.setTextColor(255, 255, 255);
     doc.setFontSize(13);
     doc.setFont(undefined, 'bold');
-    doc.text(`${idx + 1}. ${hab.nombre} - ${SEDE_LABEL[hab.sede]}${hab.piso ? ' (' + hab.piso + ')' : ''}`, 46, y);
+    doc.text(`${idx + 1}. ${hab.nombre}`, 46, y);
     doc.setFont(undefined, 'normal');
-    y += 18;
+    doc.setFontSize(10);
+    doc.text(SEDE_LABEL[hab.sede] + (hab.piso ? '  -  ' + hab.piso : ''), 200, y);
+    // Prioridad a la derecha
+    if (probs) {
+      const prioTxt = (e.prioridad ? PRIO_LABEL[e.prioridad] : 'Media');
+      doc.setFont(undefined, 'bold');
+      doc.text('Prioridad: ' + prioTxt, 460, y);
+      doc.setFont(undefined, 'normal');
+    }
+    y += 24;
 
-    // Línea de estado
+    // Estado
     doc.setFontSize(10);
     doc.setTextColor(probs ? 194 : 30, probs ? 51 : 140, probs ? 58 : 77);
     doc.setFont(undefined, 'bold');
-    doc.text(probs ? 'Requiere intervención' : 'Sin observaciones', 46, y);
+    doc.text(probs ? 'REQUIERE INTERVENCIÓN' : 'SIN OBSERVACIONES', 46, y);
     doc.setFont(undefined, 'normal');
-    doc.setTextColor(60, 60, 60);
-    if (e.prioridad) doc.text('  |  Prioridad: ' + PRIO_LABEL[e.prioridad], 200, y);
-    y += 16;
+    y += 18;
 
-    // TODOS los puntos del checklist (no solo los reportados)
-    PUNTOS_CHECK.forEach(p => {
-      const data = e.puntos[p.id] || { estado: ESTADO_PUNTO.PENDIENTE };
-      let etiqueta, color;
-      if (data.estado === ESTADO_PUNTO.OK)            { etiqueta = '[ OK ]';       color = [30, 140, 77]; }
-      else if (data.estado === ESTADO_PUNTO.REPORTAR) { etiqueta = '[ REPORTAR ]'; color = [194, 51, 58]; }
-      else                                            { etiqueta = '[ N/R ]';      color = [140, 140, 140]; }
+    // Puntos reportados con comentario y fotos
+    const reportados = PUNTOS_CHECK.filter(p => e.puntos[p.id] && e.puntos[p.id].estado === ESTADO_PUNTO.REPORTAR);
+    reportados.forEach(p => {
+      const data = e.puntos[p.id];
+      if (y > 720) { doc.addPage(); y = 50; }
 
-      if (y > 730) { doc.addPage(); y = 50; }
-
-      doc.setFontSize(9);
+      // Nombre del punto
+      doc.setFontSize(11);
       doc.setFont(undefined, 'bold');
-      doc.setTextColor(color[0], color[1], color[2]);
-      doc.text(etiqueta, 46, y);
+      doc.setTextColor(194, 51, 58);
+      doc.text('>  ' + p.label, 50, y);
       doc.setFont(undefined, 'normal');
-      doc.setTextColor(60, 60, 60);
-      doc.text(p.label, 130, y);
-      y += 12;
+      y += 14;
 
-      // Solo mostrar comentario + fotos si es REPORTAR
-      if (data.estado === ESTADO_PUNTO.REPORTAR) {
-        if (data.comentario) {
-          const lines = doc.splitTextToSize(data.comentario, 450);
-          doc.setFontSize(9);
-          doc.setTextColor(80, 80, 80);
-          doc.text(lines, 136, y);
-          y += lines.length * 11 + 2;
-        }
-        const fotos = data.fotos || (data.foto ? [data.foto] : []);
-        if (fotos.length) {
-          const PHOTO_W = 105, PHOTO_H = 78, GAP = 6, PER_ROW = 4;
-          let col = 0;
-          const xStart = 136;
-          fotos.forEach((foto) => {
-            if (col === 0 && y + PHOTO_H > 730) { doc.addPage(); y = 50; }
-            try {
-              doc.addImage(foto, 'JPEG', xStart + col * (PHOTO_W + GAP), y, PHOTO_W, PHOTO_H);
-            } catch (err) { /* skip si falla */ }
-            col++;
-            if (col >= PER_ROW) { col = 0; y += PHOTO_H + GAP; }
-          });
-          if (col > 0) y += PHOTO_H + GAP;
-        }
-        y += 4;
+      // Comentario
+      if (data.comentario) {
+        const lines = doc.splitTextToSize('"' + data.comentario + '"', 480);
+        if (y + lines.length * 12 > 730) { doc.addPage(); y = 50; }
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'italic');
+        doc.setTextColor(70, 70, 70);
+        doc.text(lines, 64, y);
+        doc.setFont(undefined, 'normal');
+        y += lines.length * 12 + 4;
       }
+
+      // Fotos
+      const fotos = data.fotos || (data.foto ? [data.foto] : []);
+      if (fotos.length) {
+        const PHOTO_W = 110, PHOTO_H = 82, GAP = 6, PER_ROW = 4;
+        let col = 0;
+        const xStart = 64;
+        fotos.forEach(foto => {
+          if (col === 0 && y + PHOTO_H > 730) { doc.addPage(); y = 50; }
+          try {
+            doc.addImage(foto, 'JPEG', xStart + col * (PHOTO_W + GAP), y, PHOTO_W, PHOTO_H);
+          } catch (err) { /* skip */ }
+          col++;
+          if (col >= PER_ROW) { col = 0; y += PHOTO_H + GAP; }
+        });
+        if (col > 0) y += PHOTO_H + GAP;
+      }
+      y += 6;
     });
 
+    // Observaciones generales del evaluador (si las hay)
     if (e.obs_generales) {
-      const lines = doc.splitTextToSize('Observaciones generales: ' + e.obs_generales, 500);
+      const lines = doc.splitTextToSize('Notas del evaluador: ' + e.obs_generales, 500);
       if (y + lines.length * 12 > 730) { doc.addPage(); y = 50; }
+      doc.setFontSize(10);
       doc.setFont(undefined, 'italic');
-      doc.setTextColor(60, 60, 60);
-      doc.text(lines, 46, y);
+      doc.setTextColor(80, 80, 80);
+      doc.text(lines, 50, y);
       doc.setFont(undefined, 'normal');
-      y += lines.length * 12 + 8;
+      y += lines.length * 12 + 6;
     }
-    y += 14;
+
+    // Línea compacta de verificación: cuántos puntos quedaron en cada estado
+    const conteoOK = PUNTOS_CHECK.filter(p => e.puntos[p.id] && e.puntos[p.id].estado === ESTADO_PUNTO.OK).length;
+    const conteoNR = PUNTOS_CHECK.filter(p => !e.puntos[p.id] || e.puntos[p.id].estado === ESTADO_PUNTO.PENDIENTE).length;
+    const conteoReportar = reportados.length;
+
+    if (y > 730) { doc.addPage(); y = 50; }
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    doc.setFont(undefined, 'normal');
+    const partes = [];
+    if (conteoOK > 0) partes.push(conteoOK + ' verificados OK');
+    if (conteoReportar > 0) partes.push(conteoReportar + ' reportados');
+    if (conteoNR > 0) partes.push(conteoNR + ' sin revisar');
+    doc.text('Verificación: ' + partes.join('  -  ') + '  (de ' + PUNTOS_CHECK.length + ' puntos totales)', 46, y);
+    y += 8;
+
+    // Separador
+    doc.setDrawColor(220, 222, 228);
+    doc.line(40, y, 572, y);
+    y += 18;
   });
 
   // Pie de página
