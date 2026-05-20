@@ -455,7 +455,9 @@ function renderChecklist() {
   $('#check-progreso').textContent = (idx + 1) + ' de ' + total;
 
   const html = PUNTOS_CHECK.map(p => {
-    const data = evalActual.puntos[p.id] || { estado: ESTADO_PUNTO.PENDIENTE, comentario: '', foto: null };
+    const data = evalActual.puntos[p.id] || { estado: ESTADO_PUNTO.PENDIENTE, comentario: '', fotos: [] };
+    // compat: si viene con .foto vieja, normalizar para render
+    const fotos = data.fotos || (data.foto ? [data.foto] : []);
     const stateClass = data.estado === ESTADO_PUNTO.OK ? 'estado-ok'
                       : data.estado === ESTADO_PUNTO.REPORTAR ? 'estado-reportar' : '';
     return `
@@ -471,11 +473,11 @@ function renderChecklist() {
           <textarea placeholder="Describe el problema..." data-field="comentario">${data.comentario || ''}</textarea>
           <div class="foto-controls">
             <label class="foto-btn">
-              📷 Tomar foto
+              📷 Agregar foto <span class="foto-count" data-foto-count>(${fotos.length}/${MAX_FOTOS_POR_PUNTO})</span>
               <input type="file" accept="image/*" capture="environment" data-field="foto">
             </label>
             <div class="foto-preview-wrap" data-foto-wrap>
-              ${data.foto ? `<div class="foto-preview"><img src="${data.foto}"><button class="quitar-foto" data-quitar>×</button></div>` : ''}
+              ${fotos.map((f, idx) => `<div class="foto-preview"><img src="${f}"><button class="quitar-foto" data-quitar="${idx}">×</button></div>`).join('')}
             </div>
           </div>
         </div>
@@ -503,13 +505,19 @@ function renderChecklist() {
     if (fileInput) fileInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
+      const punto = ensurePunto(puntoId);
+      if (punto.fotos.length >= MAX_FOTOS_POR_PUNTO) {
+        toast('Máximo ' + MAX_FOTOS_POR_PUNTO + ' fotos por punto. Quita alguna primero.', 'danger');
+        fileInput.value = '';
+        return;
+      }
       toast('Procesando foto...');
       try {
         const dataUrl = await comprimirImagen(file, 1024, 0.72);
-        ensurePunto(puntoId).foto = dataUrl;
+        punto.fotos.push(dataUrl);
         saveRonda();
-        renderFotoPreview(div, dataUrl);
-        toast('Foto agregada', 'success');
+        renderFotoPreview(div, punto.fotos);
+        toast('Foto agregada (' + punto.fotos.length + '/' + MAX_FOTOS_POR_PUNTO + ')', 'success');
       } catch (err) {
         toast('No se pudo cargar la foto', 'danger');
       }
@@ -517,10 +525,15 @@ function renderChecklist() {
     });
 
     div.addEventListener('click', e => {
-      if (e.target.matches('[data-quitar]')) {
-        ensurePunto(puntoId).foto = null;
-        saveRonda();
-        renderFotoPreview(div, null);
+      const btnQuitar = e.target.closest('[data-quitar]');
+      if (btnQuitar) {
+        const idx = parseInt(btnQuitar.dataset.quitar, 10);
+        const punto = ensurePunto(puntoId);
+        if (!isNaN(idx) && idx >= 0 && idx < punto.fotos.length) {
+          punto.fotos.splice(idx, 1);
+          saveRonda();
+          renderFotoPreview(div, punto.fotos);
+        }
       }
     });
   });
@@ -528,10 +541,16 @@ function renderChecklist() {
 
 function ensurePunto(puntoId) {
   if (!State.ronda_eval_actual.puntos[puntoId]) {
-    State.ronda_eval_actual.puntos[puntoId] = { estado: ESTADO_PUNTO.PENDIENTE, comentario: '', foto: null };
+    State.ronda_eval_actual.puntos[puntoId] = { estado: ESTADO_PUNTO.PENDIENTE, comentario: '', fotos: [] };
   }
-  return State.ronda_eval_actual.puntos[puntoId];
+  const p = State.ronda_eval_actual.puntos[puntoId];
+  // Migración inline: si hay un campo viejo `foto` (string), convertirlo a `fotos` array
+  if (p.foto && !p.fotos) { p.fotos = [p.foto]; delete p.foto; }
+  if (!p.fotos) p.fotos = [];
+  return p;
 }
+
+const MAX_FOTOS_POR_PUNTO = 5;
 
 function setPunto(puntoId, nuevoEstado) {
   const p = ensurePunto(puntoId);
@@ -547,11 +566,14 @@ function setPunto(puntoId, nuevoEstado) {
   div.querySelector('.rep-btn').classList.toggle('active', p.estado === ESTADO_PUNTO.REPORTAR);
 }
 
-function renderFotoPreview(div, dataUrl) {
+function renderFotoPreview(div, fotos) {
   const wrap = div.querySelector('[data-foto-wrap]');
-  wrap.innerHTML = dataUrl
-    ? `<div class="foto-preview"><img src="${dataUrl}"><button class="quitar-foto" data-quitar>×</button></div>`
-    : '';
+  const arr = Array.isArray(fotos) ? fotos : (fotos ? [fotos] : []);
+  wrap.innerHTML = arr
+    .map((f, idx) => `<div class="foto-preview"><img src="${f}"><button class="quitar-foto" data-quitar="${idx}">×</button></div>`)
+    .join('');
+  const cnt = div.querySelector('[data-foto-count]');
+  if (cnt) cnt.textContent = '(' + arr.length + '/' + MAX_FOTOS_POR_PUNTO + ')';
 }
 
 function guardarYSiguiente() {
@@ -917,12 +939,20 @@ function generarPDF() {
         doc.text(lines, 60, y);
         y += lines.length * 12;
       }
-      if (data.foto) {
-        if (y > 600) { doc.addPage(); y = 50; }
-        try {
-          doc.addImage(data.foto, 'JPEG', 60, y, 120, 90);
-          y += 100;
-        } catch (err) { /* skip foto si falla */ }
+      const fotos = data.fotos || (data.foto ? [data.foto] : []);
+      if (fotos.length) {
+        const PHOTO_W = 120, PHOTO_H = 90, GAP = 8, PER_ROW = 3;
+        let col = 0;
+        const xStart = 60;
+        fotos.forEach((foto) => {
+          if (col === 0 && y + PHOTO_H > 720) { doc.addPage(); y = 50; }
+          try {
+            doc.addImage(foto, 'JPEG', xStart + col * (PHOTO_W + GAP), y, PHOTO_W, PHOTO_H);
+          } catch (err) { /* skip foto si falla */ }
+          col++;
+          if (col >= PER_ROW) { col = 0; y += PHOTO_H + GAP; }
+        });
+        if (col > 0) y += PHOTO_H + GAP;
       }
       y += 6;
     });
