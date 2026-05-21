@@ -99,6 +99,10 @@ const HABITACIONES = [
   { id: 'CM-BUENOS_AIRES',    nombre: 'BUENOS AIRES',     sede: 'CENTRO_MEDICO', piso: '', categoria: 'HOSPITALIZACION' },
   { id: 'CM-GUADALAJARA',     nombre: 'GUADALAJARA',      sede: 'CENTRO_MEDICO', piso: '', categoria: 'HOSPITALIZACION' },
   { id: 'CM-LIMA',            nombre: 'LIMA',             sede: 'CENTRO_MEDICO', piso: '', categoria: 'HOSPITALIZACION' },
+  // Habitaciones de Preparación - Centro Médico
+  { id: 'CM-PREP-APOLO',      nombre: 'APOLO',            sede: 'CENTRO_MEDICO', piso: 'Preparación', categoria: 'PREPARACION' },
+  { id: 'CM-PREP-HERA',       nombre: 'HERA',             sede: 'CENTRO_MEDICO', piso: 'Preparación', categoria: 'PREPARACION' },
+  { id: 'CM-PREP-HERMES',     nombre: 'HERMES',           sede: 'CENTRO_MEDICO', piso: 'Preparación', categoria: 'PREPARACION' },
 ];
 
 const SEDE_LABEL = {
