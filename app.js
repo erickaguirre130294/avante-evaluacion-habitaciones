@@ -23,6 +23,7 @@ const PUNTOS_CHECK = [
   { id: 'iluminacion',    label: 'Iluminación' },
   { id: 'tomacorrientes', label: 'Tomacorrientes' },
   { id: 'paredes',        label: 'Paredes / Pintura' },
+  { id: 'cielo_falso',    label: 'Cielo falso', conCantidad: true, cantidadLabel: 'Piezas a cambiar' },
   { id: 'piso',           label: 'Piso' },
   { id: 'ventanas',       label: 'Ventanas / Cortinas' },
   { id: 'closet',         label: 'Closet / Mobiliario' },
@@ -479,10 +480,14 @@ function renderChecklist() {
 
   const html = PUNTOS_CHECK.map(p => {
     const data = evalActual.puntos[p.id] || { estado: ESTADO_PUNTO.PENDIENTE, comentario: '', fotos: [] };
-    // compat: si viene con .foto vieja, normalizar para render
     const fotos = data.fotos || (data.foto ? [data.foto] : []);
     const stateClass = data.estado === ESTADO_PUNTO.OK ? 'estado-ok'
                       : data.estado === ESTADO_PUNTO.REPORTAR ? 'estado-reportar' : '';
+    const cantidadHtml = p.conCantidad ? `
+            <label class="cantidad-label">
+              ${p.cantidadLabel || 'Cantidad'}:
+              <input type="number" min="0" step="1" inputmode="numeric" class="cantidad-input" data-field="cantidad" value="${data.cantidad_piezas != null ? data.cantidad_piezas : ''}" placeholder="0">
+            </label>` : '';
     return `
       <div class="punto ${stateClass}" data-punto="${p.id}">
         <div class="punto-header">
@@ -494,6 +499,7 @@ function renderChecklist() {
         </div>
         <div class="punto-detalle">
           <textarea placeholder="Describe el problema..." data-field="comentario">${data.comentario || ''}</textarea>
+          ${cantidadHtml}
           <div class="foto-controls">
             <label class="foto-btn">
               📷 Agregar foto <span class="foto-count" data-foto-count>(${fotos.length}/${MAX_FOTOS_POR_PUNTO})</span>
@@ -522,6 +528,13 @@ function renderChecklist() {
     const ta = div.querySelector('textarea[data-field="comentario"]');
     if (ta) ta.addEventListener('input', () => {
       ensurePunto(puntoId).comentario = ta.value;
+    });
+
+    const cantInput = div.querySelector('input[data-field="cantidad"]');
+    if (cantInput) cantInput.addEventListener('input', () => {
+      const val = parseInt(cantInput.value, 10);
+      ensurePunto(puntoId).cantidad_piezas = isNaN(val) || val < 0 ? null : val;
+      saveRonda();
     });
 
     const fileInput = div.querySelector('input[type="file"]');
@@ -1047,6 +1060,17 @@ function generarPDF() {
       doc.text('>  ' + p.label, 50, y);
       doc.setFont(undefined, 'normal');
       y += 14;
+
+      // Cantidad de piezas (solo para puntos con conCantidad, ej. cielo falso)
+      if (p.conCantidad && data.cantidad_piezas != null && data.cantidad_piezas > 0) {
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'bold');
+        doc.setTextColor(13, 79, 124);
+        doc.text((p.cantidadLabel || 'Cantidad') + ': ' + data.cantidad_piezas, 64, y);
+        doc.setFont(undefined, 'normal');
+        doc.setTextColor(60, 60, 60);
+        y += 14;
+      }
 
       // Comentario
       if (data.comentario) {
