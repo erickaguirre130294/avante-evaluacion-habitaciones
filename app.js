@@ -30,7 +30,7 @@ const PUNTOS_CHECK = [
   { id: 'limpieza',       label: 'Limpieza general' },
 ];
 
-// Checklist específico para CONSULTORIO (no incluye cama, sofá, baño, regadera, lavamanos, TV, closet)
+// Checklist específico para CONSULTORIO (sin cama, sofá, baño, regadera, lavamanos, TV, closet, ventanas)
 const PUNTOS_CHECK_CONSULTORIO = [
   { id: 'puerta_principal',   label: 'Puerta principal' },
   { id: 'puerta_secundaria',  label: 'Puerta secundaria' },
@@ -44,16 +44,28 @@ const PUNTOS_CHECK_CONSULTORIO = [
   { id: 'paredes',            label: 'Paredes / Pintura' },
   { id: 'cielo_falso',        label: 'Cielo falso', conCantidad: true, cantidadLabel: 'Piezas a cambiar' },
   { id: 'piso',               label: 'Piso' },
-  { id: 'ventanas',           label: 'Ventanas / Cortinas' },
+  { id: 'limpieza',           label: 'Limpieza general' },
+];
+
+// Checklist específico para PROCEDIMIENTO
+const PUNTOS_CHECK_PROCEDIMIENTO = [
+  { id: 'puerta_principal',   label: 'Puerta principal' },
+  { id: 'canape',             label: 'Canapé' },
+  { id: 'silla_doctor',       label: 'Silla del médico' },
+  { id: 'escritorio',         label: 'Escritorio' },
+  { id: 'ac',                 label: 'Aire acondicionado' },
+  { id: 'iluminacion',        label: 'Iluminación' },
+  { id: 'tomacorrientes',     label: 'Tomacorrientes' },
+  { id: 'lavamanos',          label: 'Lavamanos' },
+  { id: 'paredes',            label: 'Paredes / Pintura' },
+  { id: 'cielo_falso',        label: 'Cielo falso', conCantidad: true, cantidadLabel: 'Piezas a cambiar' },
   { id: 'limpieza',           label: 'Limpieza general' },
 ];
 
 // Devuelve el checklist correspondiente según el hab_id
 function getPuntosCheck(habId) {
-  const hab = HABITACIONES.find(h => h.id === habId);
-  if (hab && hab.categoria === 'AREA_CLINICA' && hab.id === 'CM-CONSULTORIO') {
-    return PUNTOS_CHECK_CONSULTORIO;
-  }
+  if (habId === 'CM-CONSULTORIO')   return PUNTOS_CHECK_CONSULTORIO;
+  if (habId === 'CM-PROCEDIMIENTO') return PUNTOS_CHECK_PROCEDIMIENTO;
   return PUNTOS_CHECK;
 }
 
@@ -149,8 +161,8 @@ const ESTADO_PUNTO = { OK: 'ok', REPORTAR: 'reportar', PENDIENTE: 'pendiente' };
 const PUNTOS_CRITICOS = new Set([
   // Hospitalización / preparación / áreas
   'puerta', 'cama', 'ac', 'bano', 'regadera', 'lavamanos', 'iluminacion', 'tomacorrientes', 'limpieza',
-  // Consultorio
-  'puerta_principal', 'puerta_secundaria', 'camilla',
+  // Consultorio / Procedimiento
+  'puerta_principal', 'puerta_secundaria', 'camilla', 'canape',
 ]);
 
 // Migraciones de hab_id (cuando renombramos habitaciones, mantenemos compat con evaluaciones viejas)
