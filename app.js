@@ -103,6 +103,10 @@ const HABITACIONES = [
   { id: 'CM-PREP-APOLO',      nombre: 'APOLO',            sede: 'CENTRO_MEDICO', piso: 'Preparación', categoria: 'PREPARACION' },
   { id: 'CM-PREP-HERA',       nombre: 'HERA',             sede: 'CENTRO_MEDICO', piso: 'Preparación', categoria: 'PREPARACION' },
   { id: 'CM-PREP-HERMES',     nombre: 'HERMES',           sede: 'CENTRO_MEDICO', piso: 'Preparación', categoria: 'PREPARACION' },
+  // Áreas clínicas - Centro Médico
+  { id: 'CM-CONSULTORIO',     nombre: 'CONSULTORIO',                                    sede: 'CENTRO_MEDICO', piso: 'Áreas Clínicas', categoria: 'AREA_CLINICA' },
+  { id: 'CM-PROCEDIMIENTO',   nombre: 'PROCEDIMIENTO',                                  sede: 'CENTRO_MEDICO', piso: 'Áreas Clínicas', categoria: 'AREA_CLINICA' },
+  { id: 'CM-TRANSFERENCIA',   nombre: 'TRANSFERENCIA (Recepción pacientes quirófano)',  sede: 'CENTRO_MEDICO', piso: 'Áreas Clínicas', categoria: 'AREA_CLINICA' },
 ];
 
 const SEDE_LABEL = {
