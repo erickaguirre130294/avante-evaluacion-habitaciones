@@ -59,13 +59,24 @@ const PUNTOS_CHECK_PROCEDIMIENTO = [
   { id: 'lavamanos',          label: 'Lavamanos' },
   { id: 'paredes',            label: 'Paredes / Pintura' },
   { id: 'cielo_falso',        label: 'Cielo falso', conCantidad: true, cantidadLabel: 'Piezas a cambiar' },
+  { id: 'piso',               label: 'Piso' },
   { id: 'limpieza',           label: 'Limpieza general' },
+];
+
+// Checklist específico para TRANSFERENCIA (recepción de pacientes quirófano)
+const PUNTOS_CHECK_TRANSFERENCIA = [
+  { id: 'puerta_principal',   label: 'Puerta principal' },
+  { id: 'iluminacion',        label: 'Iluminación' },
+  { id: 'paredes',            label: 'Paredes / Pintura' },
+  { id: 'cielo_falso',        label: 'Cielo falso', conCantidad: true, cantidadLabel: 'Piezas a cambiar' },
+  { id: 'piso',               label: 'Piso' },
 ];
 
 // Devuelve el checklist correspondiente según el hab_id
 function getPuntosCheck(habId) {
   if (habId === 'CM-CONSULTORIO')   return PUNTOS_CHECK_CONSULTORIO;
   if (habId === 'CM-PROCEDIMIENTO') return PUNTOS_CHECK_PROCEDIMIENTO;
+  if (habId === 'CM-TRANSFERENCIA') return PUNTOS_CHECK_TRANSFERENCIA;
   return PUNTOS_CHECK;
 }
 
