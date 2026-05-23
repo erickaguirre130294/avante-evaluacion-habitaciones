@@ -30,6 +30,33 @@ const PUNTOS_CHECK = [
   { id: 'limpieza',       label: 'Limpieza general' },
 ];
 
+// Checklist específico para CONSULTORIO (no incluye cama, sofá, baño, regadera, lavamanos, TV, closet)
+const PUNTOS_CHECK_CONSULTORIO = [
+  { id: 'puerta_principal',   label: 'Puerta principal' },
+  { id: 'puerta_secundaria',  label: 'Puerta secundaria' },
+  { id: 'camilla',            label: 'Camilla / canapé de exploración' },
+  { id: 'sillas_pacientes',   label: 'Sillas para pacientes (2)' },
+  { id: 'silla_doctor',       label: 'Silla del médico' },
+  { id: 'escritorio',         label: 'Escritorio' },
+  { id: 'ac',                 label: 'Aire acondicionado' },
+  { id: 'iluminacion',        label: 'Iluminación' },
+  { id: 'tomacorrientes',     label: 'Tomacorrientes' },
+  { id: 'paredes',            label: 'Paredes / Pintura' },
+  { id: 'cielo_falso',        label: 'Cielo falso', conCantidad: true, cantidadLabel: 'Piezas a cambiar' },
+  { id: 'piso',               label: 'Piso' },
+  { id: 'ventanas',           label: 'Ventanas / Cortinas' },
+  { id: 'limpieza',           label: 'Limpieza general' },
+];
+
+// Devuelve el checklist correspondiente según el hab_id
+function getPuntosCheck(habId) {
+  const hab = HABITACIONES.find(h => h.id === habId);
+  if (hab && hab.categoria === 'AREA_CLINICA' && hab.id === 'CM-CONSULTORIO') {
+    return PUNTOS_CHECK_CONSULTORIO;
+  }
+  return PUNTOS_CHECK;
+}
+
 const HABITACIONES = [
   // Hospital Especializado - Piso 1 UCI/UCIN (6)
   { id: 'HE-VANGOGH',       nombre: 'VANGOGH',         sede: 'HOSPITAL_ESPECIALIZADO', piso: 'Piso 1 - UCI/UCIN',             categoria: 'UCI' },
@@ -119,7 +146,12 @@ const ESTADO_PUNTO = { OK: 'ok', REPORTAR: 'reportar', PENDIENTE: 'pendiente' };
 
 // Puntos que, si están reportados, afectan el USO o SEGURIDAD del paciente
 // y por defecto suben la prioridad a Alta automáticamente.
-const PUNTOS_CRITICOS = new Set(['puerta', 'cama', 'ac', 'bano', 'regadera', 'lavamanos', 'iluminacion', 'tomacorrientes', 'limpieza']);
+const PUNTOS_CRITICOS = new Set([
+  // Hospitalización / preparación / áreas
+  'puerta', 'cama', 'ac', 'bano', 'regadera', 'lavamanos', 'iluminacion', 'tomacorrientes', 'limpieza',
+  // Consultorio
+  'puerta_principal', 'puerta_secundaria', 'camilla',
+]);
 
 // Migraciones de hab_id (cuando renombramos habitaciones, mantenemos compat con evaluaciones viejas)
 const HAB_ID_MIGRATIONS = { 'CM-HERMES': 'CM-ATENAS' };
@@ -486,7 +518,8 @@ function renderChecklist() {
   $('#check-hab-nombre').textContent = hab.nombre;
   $('#check-hab-meta').textContent = SEDE_LABEL[hab.sede] + (hab.piso ? ' - ' + hab.piso : '');
 
-  const html = PUNTOS_CHECK.map(p => {
+  const puntosCheck = getPuntosCheck(hab.id);
+  const html = puntosCheck.map(p => {
     const data = evalActual.puntos[p.id] || { estado: ESTADO_PUNTO.PENDIENTE, comentario: '', fotos: [] };
     const fotos = data.fotos || (data.foto ? [data.foto] : []);
     const stateClass = data.estado === ESTADO_PUNTO.OK ? 'estado-ok'
@@ -771,7 +804,8 @@ function actualizarContadorGenerar() {
 
 function reporteCardHTML(eval_, conAcciones) {
   const hab = HABITACIONES.find(h => h.id === eval_.hab_id);
-  const problemas = PUNTOS_CHECK
+  const puntosCheck = getPuntosCheck(eval_.hab_id);
+  const problemas = puntosCheck
     .filter(p => eval_.puntos[p.id] && eval_.puntos[p.id].estado === ESTADO_PUNTO.REPORTAR)
     .map(p => `<li>${p.label}${eval_.puntos[p.id].comentario ? ': ' + escapeHTML(eval_.puntos[p.id].comentario) : ''}</li>`);
   const prio = eval_.prioridad ? `<span class="hab-badge ${eval_.prioridad === 'critica' || eval_.prioridad === 'alta' ? 'alta' : eval_.prioridad === 'media' ? 'media' : 'baja'}">${PRIO_LABEL[eval_.prioridad]}</span>` : '';
@@ -1056,7 +1090,8 @@ function generarPDF() {
     y += 18;
 
     // Puntos reportados con comentario y fotos
-    const reportados = PUNTOS_CHECK.filter(p => e.puntos[p.id] && e.puntos[p.id].estado === ESTADO_PUNTO.REPORTAR);
+    const puntosCheck = getPuntosCheck(e.hab_id);
+    const reportados = puntosCheck.filter(p => e.puntos[p.id] && e.puntos[p.id].estado === ESTADO_PUNTO.REPORTAR);
     reportados.forEach(p => {
       const data = e.puntos[p.id];
       if (y > 720) { doc.addPage(); y = 50; }
@@ -1124,8 +1159,8 @@ function generarPDF() {
     }
 
     // Línea compacta de verificación: cuántos puntos quedaron en cada estado
-    const conteoOK = PUNTOS_CHECK.filter(p => e.puntos[p.id] && e.puntos[p.id].estado === ESTADO_PUNTO.OK).length;
-    const conteoNR = PUNTOS_CHECK.filter(p => !e.puntos[p.id] || e.puntos[p.id].estado === ESTADO_PUNTO.PENDIENTE).length;
+    const conteoOK = puntosCheck.filter(p => e.puntos[p.id] && e.puntos[p.id].estado === ESTADO_PUNTO.OK).length;
+    const conteoNR = puntosCheck.filter(p => !e.puntos[p.id] || e.puntos[p.id].estado === ESTADO_PUNTO.PENDIENTE).length;
     const conteoReportar = reportados.length;
 
     if (y > 730) { doc.addPage(); y = 50; }
@@ -1136,7 +1171,7 @@ function generarPDF() {
     if (conteoOK > 0) partes.push(conteoOK + ' verificados OK');
     if (conteoReportar > 0) partes.push(conteoReportar + ' reportados');
     if (conteoNR > 0) partes.push(conteoNR + ' sin revisar');
-    doc.text('Verificación: ' + partes.join('  -  ') + '  (de ' + PUNTOS_CHECK.length + ' puntos totales)', 46, y);
+    doc.text('Verificación: ' + partes.join('  -  ') + '  (de ' + puntosCheck.length + ' puntos totales)', 46, y);
     y += 8;
 
     // Separador
@@ -1180,7 +1215,7 @@ function compartirReporte() {
       body += `${idx + 1}) ${hab.nombre} - ${SEDE_LABEL[hab.sede]}`;
       if (e.prioridad) body += ` [Prioridad ${PRIO_LABEL[e.prioridad]}]`;
       body += '\n';
-      PUNTOS_CHECK.forEach(p => {
+      getPuntosCheck(e.hab_id).forEach(p => {
         const d = e.puntos[p.id];
         if (d && d.estado === ESTADO_PUNTO.REPORTAR) {
           body += `   - ${p.label}${d.comentario ? ': ' + d.comentario : ''}\n`;
