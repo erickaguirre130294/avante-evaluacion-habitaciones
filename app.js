@@ -105,6 +105,7 @@ const HABITACIONES = [
   { id: 'HE-HIMALAYA',      nombre: 'HIMALAYA',        sede: 'HOSPITAL_ESPECIALIZADO', piso: 'Piso 3 Poniente',               categoria: 'HOSPITALIZACION' },
   { id: 'HE-MANILA',        nombre: 'MANILA',          sede: 'HOSPITAL_ESPECIALIZADO', piso: 'Piso 3 Poniente',               categoria: 'HOSPITALIZACION' },
   { id: 'HE-SINGAPUR',      nombre: 'SINGAPUR',        sede: 'HOSPITAL_ESPECIALIZADO', piso: 'Piso 3 Poniente',               categoria: 'HOSPITALIZACION' },
+  { id: 'HE-HONG_KONG',     nombre: 'HONG KONG',       sede: 'HOSPITAL_ESPECIALIZADO', piso: 'Piso 3 Poniente',               categoria: 'HOSPITALIZACION' },
 
   // Hospital Especializado - Piso 4 Oriente Pediatría (6)
   { id: 'HE-ARUSHA',        nombre: 'ARUSHA',          sede: 'HOSPITAL_ESPECIALIZADO', piso: 'Piso 4 Oriente - Pediatría',    categoria: 'PEDIATRIA' },
